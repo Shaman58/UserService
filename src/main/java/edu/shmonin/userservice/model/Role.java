@@ -24,6 +24,7 @@ public class Role {
     @Column(name = "id", nullable = false)
     @GeneratedValue(strategy = IDENTITY)
     private Long id;
+
     @Column(name = "name", nullable = false, unique = true)
     private String name;
 }
