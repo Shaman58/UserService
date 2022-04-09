@@ -4,14 +4,12 @@ import edu.shmonin.userservice.exception.EntityNotFoundException;
 import edu.shmonin.userservice.model.Role;
 import edu.shmonin.userservice.model.User;
 import edu.shmonin.userservice.repository.UserRepository;
+import edu.shmonin.userservice.security.UserPrincipal;
 import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
@@ -24,7 +22,7 @@ import static java.util.stream.Collectors.toList;
 @RequiredArgsConstructor
 @Slf4j
 @Service
-public class UserService extends DefaultOAuth2UserService implements UserDetailsService {
+public class UserService extends DefaultOAuth2UserService {
 
     private final UserRepository userRepository;
 
@@ -32,24 +30,25 @@ public class UserService extends DefaultOAuth2UserService implements UserDetails
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
         var oauthUser = super.loadUser(userRequest);
         var username = (String) oauthUser.getAttributes().get("login");
-        if (userRepository.findByUsername(username).isEmpty()) {
+        var userPrincipal = userRepository.findByUsername(username)
+                .map(user -> new UserPrincipal(
+                        user.getId(),
+                        user.getUsername(),
+                        user.getPassword(),
+                        user.getRoles().stream().map(role -> new SimpleGrantedAuthority(role.getName())).collect(toList()),
+                        oauthUser.getAttributes()
+                ));
+        if (userPrincipal.isEmpty()) {
             var user = new User();
             user.setUsername(username);
             var userRole = new Role();
             userRole.setName("ROLE_USER");
             user.setRoles(Set.of(userRole));
             userRepository.save(user);
+        } else {
+            return userPrincipal.get();
         }
         return oauthUser;
-    }
-
-    @Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        var user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User " + username + " not found in database"));
-        var authorities = user.getRoles().stream().map(role -> new SimpleGrantedAuthority(role.getName()))
-                .collect(toList());
-        return new org.springframework.security.core.userdetails.User(user.getUsername(), "none", authorities);
     }
 
     public List<User> findAll() {
